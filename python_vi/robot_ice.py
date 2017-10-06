@@ -1,3 +1,4 @@
+#! /usr/bin/env python
 import argparse
 import itertools
 import os
@@ -5,7 +6,8 @@ import sys
 import time
 import numpy as np
 import random
-# import VI
+import matplotlib
+import matplotlib.pyplot as plt
 
 # 0: Normal ice
 # 1: Cracked ice
@@ -293,22 +295,32 @@ S = list(itertools.product(range(SQUARE_SIZE), repeat=2))
 A = ['up', 'down', 'left', 'right']
 
 def valueIteration(ns, na, discount, horizon, epsilon, T, R):
-    V = [0]*ns
-    A1 = [0]*ns
-    delta = 10
-    iters = 0
-    while delta > 1e-5 or iters < 100 :
+    """
+    Perform the Value Iteration solver. Expects as input the number of states
+    and actions, the discount (gamma), the horizon, the minimum tolerated error,
+    the transition probabilities among states and the corresponding rewards.
+
+    Returns
+    -------
+    solution: triple
+        First element is a boolean that indicates whether the method has
+        converged. The second element is the best policy. The third
+        element are the values.
+    """
+    Q, V, A1 = [0]*ns, [0]*ns, [0]*ns
+    delta, iters = 10, 0
+    while delta > epsilon or iters < horizon :
         delta = 0
-        for s in range(len(S)):
+        for s in range(ns):
             v = V[s]
-            V[s] = [[T[s][a][sn]*(R[s][a][sn]+discount*V[sn])
+            Q[s] = [[T[s][a][sn]*(R[s][a][sn]+discount*V[sn])
                     for sn in range(ns)] for a in range(na)]
-            tmp = [sum(vi) for vi in V[s]]
-            V[s] = max(tmp)
-            A1[s] = np.argmax(tmp)
+            Q[s] = [sum(qi) for qi in Q[s]]
+            V[s] = max(Q[s])
+            A1[s] = np.argmax(Q[s])
             delta = max(delta, abs(v - V[s]))
         iters += 1
-    if delta < 1e-5:
+    if delta < epsilon:  #  iteration ended due to convergence
         return True, A1, V
     else:
         return False, A1, V
@@ -339,21 +351,26 @@ def solve_mdp(horizon, epsilon, discount=0.9):
         R.append([[getReward(coord, action, decodeState(next_state))
                    for next_state in range(len(S))] for action in A])
 
-    # solution_a, solution_v = VI.valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
     conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+    if conv:
+        print "CONVERGED"
+    else:
+        print "MAX ITERS"
 
     s = 0
 
-    totalReward = 0
-    for t in xrange(100):
+    totalReward = []
+    for t in xrange(horizon):
         printState(decodeState(s))
 
         if isTerminal(decodeState(s)):
             break
 
         s1, r = sampleSR(s, solution_a[s], T)
-
-        totalReward += r
+        if len(totalReward) > 0:
+            totalReward += [totalReward[-1] + r]
+        else:
+            totalReward += [r]
         s = s1
 
         goup(SQUARE_SIZE)
@@ -362,15 +379,15 @@ def solve_mdp(horizon, epsilon, discount=0.9):
 
         # Sleep 1 second so the user can see what is happening.
         time.sleep(1)
-    if conv:
-        print "CONVERGED"
-    else:
-        print "MAX ITERS"
+    plt.plot(totalReward)
+    plt.xlabel("Iteration")
+    plt.ylabel("Cummulative Reward")
+    plt.show()
     return (conv, solution_v)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-ho', '--horizon', default=1000000, type=int,
+    parser.add_argument('-ho', '--horizon', default=100, type=int,
                         help="Horizon parameter for value iteration")
     parser.add_argument('-e', '--epsilon', default=0.001, type=float,
                         help="Epsilon parameter for value iteration")
