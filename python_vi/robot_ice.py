@@ -3,8 +3,9 @@ import itertools
 import os
 import sys
 import time
+import numpy as np
 import random
-import VI
+# import VI
 
 # 0: Normal ice
 # 1: Cracked ice
@@ -19,6 +20,7 @@ world = [[0,0,0,3],
          [0,1,1,1]]
 
 world_column = lambda i: enumerate(reversed([row[i] for row in world]))
+argmax = lambda iterable, func: max(iterable, key=func)
 
 pSlip = 0.05
 
@@ -290,6 +292,27 @@ S = list(itertools.product(range(SQUARE_SIZE), repeat=2))
 # A = robot actions
 A = ['up', 'down', 'left', 'right']
 
+def valueIteration(ns, na, discount, horizon, epsilon, T, R):
+    V = [0]*ns
+    A1 = [0]*ns
+    delta = 10
+    iters = 0
+    while delta > 1e-5 or iters < 100 :
+        delta = 0
+        for s in range(len(S)):
+            v = V[s]
+            V[s] = [[T[s][a][sn]*(R[s][a][sn]+discount*V[sn])
+                    for sn in range(ns)] for a in range(na)]
+            tmp = [sum(vi) for vi in V[s]]
+            V[s] = max(tmp)
+            A1[s] = np.argmax(tmp)
+            delta = max(delta, abs(v - V[s]))
+        iters += 1
+    if delta < 1e-5:
+        return True, A1, V
+    else:
+        return False, A1, V
+
 def solve_mdp(horizon, epsilon, discount=0.9):
     """
     Construct the gridworld MDP, and solve it using value iteration. Print the
@@ -316,7 +339,8 @@ def solve_mdp(horizon, epsilon, discount=0.9):
         R.append([[getReward(coord, action, decodeState(next_state))
                    for next_state in range(len(S))] for action in A])
 
-    solution_a, solution_v = VI.valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+    # solution_a, solution_v = VI.valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+    conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
 
     s = 0
 
@@ -338,7 +362,11 @@ def solve_mdp(horizon, epsilon, discount=0.9):
 
         # Sleep 1 second so the user can see what is happening.
         time.sleep(1)
-
+    if conv:
+        print "CONVERGED"
+    else:
+        print "MAX ITERS"
+    return (conv, solution_v)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
