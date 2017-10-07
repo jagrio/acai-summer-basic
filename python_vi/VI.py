@@ -24,7 +24,7 @@ def valueIteration(S, A, discount, horizon, epsilon, T, R):
         if useEpsilon:
             variation = max([abs(vv0 - vv1) for vv0, vv1 in zip(v0, v1)])
 
-    return a1, v1
+    return (a1, v1)
 
 
 def computeImmediateRewards(S, A, T, R):

@@ -7,9 +7,11 @@ import time
 import numpy as np
 import random
 import matplotlib
+matplotlib.use('qt5agg')
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 from matplotlib import cm
+import VI
 
 # 0: Normal ice
 # 1: Cracked ice
@@ -339,6 +341,7 @@ def qLearning(ns, na, discount, horizon, epsilon, T, R):
         First element is the best policy.
         Second element are the values.
     """
+    horizon = 100000
     Q, V, A1 = np.random.rand(ns,na), [0]*ns, [0]*ns
     iters, lr, epsilon, beta = 0, .1, 0.5, 0
     while iters < horizon :
@@ -371,7 +374,7 @@ def qLearning(ns, na, discount, horizon, epsilon, T, R):
     return A1, V
 
 
-def solve_mdp(horizon, epsilon, discount=0.9):
+def solve_mdp(horizon, epsilon, discount=0.9, method='ours'):
     """
     Construct the gridworld MDP, and solve it using value iteration. Print the
     best found policy for sample states.
@@ -396,8 +399,11 @@ def solve_mdp(horizon, epsilon, discount=0.9):
                    for next_state in range(len(S))] for action in A])
         R.append([[getReward(coord, action, decodeState(next_state))
                    for next_state in range(len(S))] for action in A])
-
-    conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+    if method=='ours':
+        conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+    elif method=='theirs':
+        solution_a, solution_v = VI.valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+        conv = True
     if conv:
         print "CONVERGED"
     else:
@@ -499,24 +505,35 @@ if __name__ == "__main__":
     numexps = 100
     r0 = [0]*numexps
     r1 = [0]*numexps
+    r2 = [0]*numexps
     out0 = Parallel(n_jobs=-1)(delayed(solve_mdp) (args.horizon, args.epsilon) for k in range(numexps))
     out1 = Parallel(n_jobs=-1)(delayed(solve_ql) (args.horizon, args.epsilon) for k in range(numexps))
+    tmpargs = [args.horizon, args.epsilon, 0.9, 'theirs']
+    out2 = Parallel(n_jobs=-1)(delayed(solve_mdp) (*tmpargs) for k in range(numexps))
     for i in range(numexps):
         _, v0, tr0 = out0[i]
         v1, tr1 = out1[i]
+        _, v2, tr2 = out2[i]
         # _, v0, tr0 = solve_mdp(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
         # v1, tr1 = solve_ql(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
         r0[i] = tr0[-1]
         r1[i] = tr1[-1]
+        r2[i] = tr2[-1]
     print r0, np.mean(r0)
     print r1, np.mean(r1)
+    print r2, np.mean(r2)
     plt.plot(r0)
     plt.hold
     plt.plot(r1)
+    plt.hold
+    plt.plot(r2)
     plt.show(block=False)
     plt.matshow(np.reshape(v0, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
     plt.show(block=False)
     plt.matshow(np.reshape(v1, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
+    plt.gca().invert_yaxis()
+    plt.show(block=False)
+    plt.matshow(np.reshape(v2, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
     plt.show()

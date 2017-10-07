@@ -1,5 +1,9 @@
+#! /usr/bin/env python
 import random
-
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib import cm
 from ice import *
 
 EPISODES = 100000
@@ -53,13 +57,17 @@ def main():
         average_cumulative_reward += 0.05 * cumulative_reward
 
         print(i, cumulative_reward, sep=',')
-
+    V = [0]*16
+    for s in range(16):
+        V[s] = max(qtable[s])
     # Print the value table
     for y in range(4):
         for x in range(4):
             print('%03.3f ' % max(qtable[y*4 + x]), end='')
-
         print()
+    plt.matshow(np.reshape(V, (4, 4)),cmap=cm.gray)
+    # plt.gca().invert_yaxis()
+    plt.show()
 
 if __name__ == '__main__':
     main()
