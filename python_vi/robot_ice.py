@@ -307,7 +307,7 @@ def valueIteration(ns, na, discount, horizon, epsilon, T, R):
         converged. The second element is the best policy. The third
         element are the values.
     """
-    Q, V, A1 = [0]*ns, [0]*ns, [0]*ns
+    Q, V, A1 = [[0]*na]*ns, [0]*ns, [0]*ns
     delta, iters = 10, 0
     while delta > epsilon or iters < horizon :
         delta = 0
@@ -324,6 +324,46 @@ def valueIteration(ns, na, discount, horizon, epsilon, T, R):
         return True, A1, V
     else:
         return False, A1, V
+
+def qLearning(ns, na, discount, horizon, epsilon, T, R):
+    """
+    Perform the Q-Learning solver. Expects as input the number of states
+    and actions, the discount (gamma), the horizon, the epsilon,
+    the transition probabilities among states and the correspon                    for sn in range(ns)] for a in range(na)]
+ding rewards.
+
+    Returns
+    -------
+    solution: tuple
+        First element is the best policy.
+        Second element are the values.
+    """
+    Q, V, A1 = np.random.rand(ns,na), [0]*ns, [0]*ns
+    iters, lr, epsilon, beta = 0, .1, 0.9, 0
+    while iters < horizon :
+        s = 0#np.random.randint(0,ns)
+        while not isTerminal(decodeState(s)):
+            # print s
+            # tmpa = np.argmax(Q[s])
+            # a = tmpa
+            probs = np.exp(beta*Q[s])/np.sum(np.exp(beta*Q[s]))
+            a = sampleProbability(probs)
+            # if sampleProbability([epsilon, 1-epsilon])==1:  # if 1
+                # a = np.random.randint(0,na)
+            # print T[s][a]
+            sn = sampleProbability(T[s][a])  # choose a random new state
+            r = R[s][a][sn]
+            Q[s][a] += lr*(r+discount*(max(Q[sn])-Q[s][a]))
+            s = sn
+            # raw_input()
+        iters += 1
+        beta += 0.01
+        # epsilon *= 1.001
+    for s in range(ns):
+        V[s] = max(Q[s])
+        A1[s] = np.argmax(Q[s])
+    return True, A1, V
+
 
 def solve_mdp(horizon, epsilon, discount=0.9):
     """
@@ -351,7 +391,8 @@ def solve_mdp(horizon, epsilon, discount=0.9):
         R.append([[getReward(coord, action, decodeState(next_state))
                    for next_state in range(len(S))] for action in A])
 
-    conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+    # conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+    conv, solution_a, solution_v = qLearning(len(S), len(A), discount, horizon, epsilon, T, R)
     if conv:
         print "CONVERGED"
     else:
@@ -361,7 +402,7 @@ def solve_mdp(horizon, epsilon, discount=0.9):
 
     totalReward = []
     for t in xrange(horizon):
-        printState(decodeState(s))
+        # printState(decodeState(s))
 
         if isTerminal(decodeState(s)):
             break
@@ -373,17 +414,17 @@ def solve_mdp(horizon, epsilon, discount=0.9):
             totalReward += [r]
         s = s1
 
-        goup(SQUARE_SIZE)
+        # goup(SQUARE_SIZE)
 
         state = encodeState(coord)
 
         # Sleep 1 second so the user can see what is happening.
-        time.sleep(1)
-    plt.plot(totalReward)
-    plt.xlabel("Iteration")
-    plt.ylabel("Cummulative Reward")
-    plt.show()
-    return (conv, solution_v)
+        # time.sleep(0.1)
+    # plt.plot(totalReward)
+    # plt.xlabel("Iteration")
+    # plt.ylabel("Cummulative Reward")
+    # plt.show()
+    return (conv, solution_v, totalReward)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -395,4 +436,10 @@ if __name__ == "__main__":
                         help="Discount parameter for value iteration")
 
     args = parser.parse_args()
-    solve_mdp(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
+    r = [0]*1000
+    for i in range(1000):
+        _, _, tr = solve_mdp(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
+        r[i] = tr[-1]
+    print r, np.mean(r)
+    plt.plot(r)
+    plt.show()
