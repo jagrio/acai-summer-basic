@@ -8,6 +8,7 @@ import numpy as np
 import random
 import matplotlib
 import matplotlib.pyplot as plt
+from joblib import Parallel, delayed, Memory
 
 # 0: Normal ice
 # 1: Cracked ice
@@ -329,8 +330,7 @@ def qLearning(ns, na, discount, horizon, epsilon, T, R):
     """
     Perform the Q-Learning solver. Expects as input the number of states
     and actions, the discount (gamma), the horizon, the epsilon,
-    the transition probabilities among states and the correspon                    for sn in range(ns)] for a in range(na)]
-ding rewards.
+    the transition probabilities among states and the corresponding rewards.
 
     Returns
     -------
@@ -362,7 +362,7 @@ ding rewards.
     for s in range(ns):
         V[s] = max(Q[s])
         A1[s] = np.argmax(Q[s])
-    return True, A1, V
+    return A1, V
 
 
 def solve_mdp(horizon, epsilon, discount=0.9):
@@ -391,8 +391,7 @@ def solve_mdp(horizon, epsilon, discount=0.9):
         R.append([[getReward(coord, action, decodeState(next_state))
                    for next_state in range(len(S))] for action in A])
 
-    # conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
-    conv, solution_a, solution_v = qLearning(len(S), len(A), discount, horizon, epsilon, T, R)
+    conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
     if conv:
         print "CONVERGED"
     else:
@@ -426,6 +425,61 @@ def solve_mdp(horizon, epsilon, discount=0.9):
     # plt.show()
     return (conv, solution_v, totalReward)
 
+def solve_ql(horizon, epsilon, discount=0.9):
+    """
+    Q-Learning and solve it. Print the
+    best found policy for sample states.
+
+    Returns
+    -------
+    solution: tuple
+        First element is the value function. The second
+        element is the Q-value function, from which a policy can be derived.
+    """
+    print time.strftime("%H:%M:%S"), "- Constructing QL..."
+
+    # T gives the transition probability for every s, a, s' triple.
+    # R gives the reward associated with every s, a, s' triple.
+    T = []
+    R = []
+    for state in range(len(S)):
+        coord = decodeState(state)
+        T.append([[getTransitionProbability(coord, action,
+                                            decodeState(next_state))
+                   for next_state in range(len(S))] for action in A])
+        R.append([[getReward(coord, action, decodeState(next_state))
+                   for next_state in range(len(S))] for action in A])
+
+    solution_a, solution_v = qLearning(len(S), len(A), discount, horizon, epsilon, T, R)
+
+    s = 0
+
+    totalReward = []
+    for t in xrange(horizon):
+        # printState(decodeState(s))
+
+        if isTerminal(decodeState(s)):
+            break
+
+        s1, r = sampleSR(s, solution_a[s], T)
+        if len(totalReward) > 0:
+            totalReward += [totalReward[-1] + r]
+        else:
+            totalReward += [r]
+        s = s1
+
+        # goup(SQUARE_SIZE)
+
+        state = encodeState(coord)
+
+        # Sleep 1 second so the user can see what is happening.
+        # time.sleep(0.1)
+    # plt.plot(totalReward)
+    # plt.xlabel("Iteration")
+    # plt.ylabel("Cummulative Reward")
+    # plt.show()
+    return (solution_v, totalReward)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-ho', '--horizon', default=100, type=int,
@@ -436,10 +490,28 @@ if __name__ == "__main__":
                         help="Discount parameter for value iteration")
 
     args = parser.parse_args()
-    r = [0]*1000
-    for i in range(1000):
-        _, _, tr = solve_mdp(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
-        r[i] = tr[-1]
-    print r, np.mean(r)
-    plt.plot(r)
+    numexps = 1000
+    r0 = [0]*numexps
+    r1 = [0]*numexps
+    out0 = Parallel(n_jobs=-1)(delayed(solve_mdp) (args.horizon, args.epsilon) for k in range(numexps))
+    out1 = Parallel(n_jobs=-1)(delayed(solve_ql) (args.horizon, args.epsilon) for k in range(numexps))
+    for i in range(numexps):
+        print out0[i]
+        _, v0, tr0 = out0[i]
+        v1, tr1 = out1[i]
+        # _, v0, tr0 = solve_mdp(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
+        # v1, tr1 = solve_ql(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
+        r0[i] = tr0[-1]
+        r1[i] = tr1[-1]
+    print r0, np.mean(r0)
+    print r1, np.mean(r1)
+    plt.plot(r0)
+    plt.hold
+    plt.plot(r1)
+    plt.show(block=False)
+    plt.matshow(np.reshape(v0, (SQUARE_SIZE, SQUARE_SIZE)))
+    plt.gca().invert_yaxis()
+    plt.show(block=False)
+    plt.matshow(np.reshape(v1, (SQUARE_SIZE, SQUARE_SIZE)))
+    plt.gca().invert_yaxis()
     plt.show()
