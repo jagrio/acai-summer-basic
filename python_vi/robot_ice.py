@@ -339,9 +339,9 @@ ding rewards.
         Second element are the values.
     """
     Q, V, A1 = np.random.rand(ns,na), [0]*ns, [0]*ns
-    iters, lr, epsilon, beta = 0, .1, 0.9, 0
+    iters, lr, epsilon, beta = 0, .1, 0.5, 0
     while iters < horizon :
-        s = 0#np.random.randint(0,ns)
+        s = np.random.randint(0,ns)
         while not isTerminal(decodeState(s)):
             # print s
             tmpa = np.argmax(Q[s])
