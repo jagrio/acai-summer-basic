@@ -358,7 +358,7 @@ ding rewards.
             # raw_input()
         iters += 1
         beta += 0.01
-        # epsilon *= 1.001
+        epsilon *= 1.001
     for s in range(ns):
         V[s] = max(Q[s])
         A1[s] = np.argmax(Q[s])
