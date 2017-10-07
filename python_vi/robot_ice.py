@@ -344,12 +344,12 @@ ding rewards.
         s = 0#np.random.randint(0,ns)
         while not isTerminal(decodeState(s)):
             # print s
-            # tmpa = np.argmax(Q[s])
-            # a = tmpa
-            probs = np.exp(beta*Q[s])/np.sum(np.exp(beta*Q[s]))
-            a = sampleProbability(probs)
-            # if sampleProbability([epsilon, 1-epsilon])==1:  # if 1
-                # a = np.random.randint(0,na)
+            tmpa = np.argmax(Q[s])
+            a = tmpa
+            # probs = np.exp(beta*Q[s])/np.sum(np.exp(beta*Q[s]))
+            # a = sampleProbability(probs)
+            if sampleProbability([epsilon, 1-epsilon])==1:  # if 1
+                a = np.random.randint(0,na)
             # print T[s][a]
             sn = sampleProbability(T[s][a])  # choose a random new state
             r = R[s][a][sn]
