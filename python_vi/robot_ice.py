@@ -8,7 +8,8 @@ import numpy as np
 import random
 import matplotlib
 import matplotlib.pyplot as plt
-from joblib import Parallel, delayed, Memory
+from joblib import Parallel, delayed
+from matplotlib import cm
 
 # 0: Normal ice
 # 1: Cracked ice
@@ -342,23 +343,28 @@ def qLearning(ns, na, discount, horizon, epsilon, T, R):
     iters, lr, epsilon, beta = 0, .1, 0.5, 0
     while iters < horizon :
         s = np.random.randint(0,ns)
-        while not isTerminal(decodeState(s)):
+        tmpdropprob = 1
+        while not isTerminal(decodeState(s)) and tmpdropprob==1:
             # print s
             tmpa = np.argmax(Q[s])
             a = tmpa
             # probs = np.exp(beta*Q[s])/np.sum(np.exp(beta*Q[s]))
             # a = sampleProbability(probs)
-            if sampleProbability([epsilon, 1-epsilon])==1:  # if 1
+            if sampleProbability([1-epsilon, epsilon])==1:  # if 1
                 a = np.random.randint(0,na)
             # print T[s][a]
             sn = sampleProbability(T[s][a])  # choose a random new state
             r = R[s][a][sn]
-            Q[s][a] += lr*(r+discount*(max(Q[sn])-Q[s][a]))
+            Q[s][a] += lr*(r+discount*(max(Q[sn]))-Q[s][a])
             s = sn
+            tmpdropprob = sampleProbability([0.001, 1-0.001])
+            if tmpdropprob==0:
+                iters -=1
+                epsilon /= 0.99
             # raw_input()
         iters += 1
         beta += 0.01
-        epsilon *= 1.001
+        epsilon *= 0.99
     for s in range(ns):
         V[s] = max(Q[s])
         A1[s] = np.argmax(Q[s])
@@ -482,21 +488,20 @@ def solve_ql(horizon, epsilon, discount=0.9):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-ho', '--horizon', default=100, type=int,
+    parser.add_argument('-ho', '--horizon', default=10000, type=int,
                         help="Horizon parameter for value iteration")
     parser.add_argument('-e', '--epsilon', default=0.001, type=float,
                         help="Epsilon parameter for value iteration")
-    parser.add_argument('-d', '--discount', default=0.9, type=float,
+    parser.add_argument('-d', '--discount', default=0.97, type=float,
                         help="Discount parameter for value iteration")
 
     args = parser.parse_args()
-    numexps = 1000
+    numexps = 100
     r0 = [0]*numexps
     r1 = [0]*numexps
     out0 = Parallel(n_jobs=-1)(delayed(solve_mdp) (args.horizon, args.epsilon) for k in range(numexps))
     out1 = Parallel(n_jobs=-1)(delayed(solve_ql) (args.horizon, args.epsilon) for k in range(numexps))
     for i in range(numexps):
-        print out0[i]
         _, v0, tr0 = out0[i]
         v1, tr1 = out1[i]
         # _, v0, tr0 = solve_mdp(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
@@ -509,9 +514,9 @@ if __name__ == "__main__":
     plt.hold
     plt.plot(r1)
     plt.show(block=False)
-    plt.matshow(np.reshape(v0, (SQUARE_SIZE, SQUARE_SIZE)))
+    plt.matshow(np.reshape(v0, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
     plt.show(block=False)
-    plt.matshow(np.reshape(v1, (SQUARE_SIZE, SQUARE_SIZE)))
+    plt.matshow(np.reshape(v1, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
     plt.show()
