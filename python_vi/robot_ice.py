@@ -380,13 +380,14 @@ def qLearning(ns, na, discount, horizon, epsilon, T, R):
         First element is the best policy.
         Second element are the values.
     """
-    horizon = 10000
+    # horizon = 10000
     Q, V, A1 = np.random.rand(ns,na), [0]*ns, [0]*ns
     iters, lr, epsilon, beta, discount = 0, .2, 1-1e-4, 0, .97
+    totalReward = [0]
     while iters < horizon :
+        tmpcr = 0
         s = np.random.randint(0,ns)
-        tmpdropprob = 1
-        while not isTerminal(decodeState(s)) and tmpdropprob==1:
+        while not isTerminal(decodeState(s)):
             # print s
             tmpa = np.argmax(Q[s])
             a = tmpa
@@ -395,27 +396,71 @@ def qLearning(ns, na, discount, horizon, epsilon, T, R):
             if sampleProbability([1-epsilon, epsilon])==1:  # if 1
                 a = np.random.randint(0,na)
             # print T[s][a]
-            sn = sampleProbability(T[s][a])  # choose a random new state
-            r = R[s][a][sn]
+            sn, r = sampleSR(s,a,T)  # choose a random new state
+            tmpcr += r
             Q[s][a] += lr*(r+discount*(max(Q[sn]))-Q[s][a])
             s = sn
-            tmpdropprob = sampleProbability([0.001, 1-0.001])
-            if tmpdropprob==0:
-                iters -=1
-                epsilon /= 0.9
-                # epsilon = iters**.5
-            # raw_input()
+        print "{:03.2f}%\r".format(iters*1./horizon*100),
         iters += 1
         # beta += 0.01
         epsilon *= 0.9
+        totalReward.append(0.99*totalReward[-1]+0.01*tmpcr)
         # epsilon = 1/iters**.5
     for s in range(ns):
         V[s] = max(Q[s])
         A1[s] = np.argmax(Q[s])
-    return A1, V
+    return A1, V, totalReward
 
 
-def solve_mdp(horizon, epsilon, discount=0.9, method='VIours',
+def sarsa(ns, na, discount, horizon, epsilon, T, R):
+    """
+    Perform the sarsa solver. Expects as input the number of states
+    and actions, the discount (gamma), the horizon, the epsilon,
+    the transition probabilities among states and the corresponding rewards.
+
+    Returns
+    -------
+    solution: tuple
+        First element is the best policy.
+        Second element are the values.
+    """
+    # horizon = 100000
+    Q, V, A1 = np.random.rand(ns,na).tolist(), [0]*ns, [0]*ns
+    iters, lr, epsilon, beta, discount = 0, .1, 0.9, 0, .9
+    totalReward = [0]
+    while iters < horizon :
+        tmpcr = 0
+        s = np.random.randint(0,ns)
+        # e-greedy
+        a = np.argmax(Q[s])
+        if sampleProbability([1-epsilon, epsilon])==1:  # if 1
+            a = np.random.randint(0,na)
+        # softmax
+        # probs = np.exp(beta*Q[s])/np.sum(np.exp(beta*Q[s]))
+        # a = sampleProbability(probs)
+        while not isTerminal(decodeState(s)):
+            sn, r = sampleSR(s,a,T)  # where you end up after action a
+            tmpcr += r
+            an = np.argmax(Q[sn])
+            if sampleProbability([1-epsilon, epsilon])==1:  # if 1
+                an = np.random.randint(0,na)
+            Q[s][a] += lr*(r+discount*Q[sn][an]-Q[s][a])
+            s = sn
+            a = an
+            # raw_input()
+        print "{:03.2f}%\r".format(iters*1./horizon*100),
+        iters += 1
+        # beta += 0.01
+        epsilon *= 0.99
+        totalReward.append(0.99*totalReward[-1]+0.01*tmpcr)
+        # epsilon = 1/iters**.5
+    for s in range(ns):
+        V[s] = max(Q[s])
+        A1[s] = np.argmax(Q[s])
+    return A1, V, totalReward
+
+
+def solve(horizon, epsilon, discount=0.9, method='VIours',
               solution_v=[], solution_a=[], printit=False, plotit=False):
     """
     Construct the gridworld MDP, and solve it using value iteration. Print the
@@ -428,7 +473,7 @@ def solve_mdp(horizon, epsilon, discount=0.9, method='VIours',
         converged. The second element is the value function. The third
         element is the Q-value function, from which a policy can be derived.
     """
-    print time.strftime("%H:%M:%S"), "- Constructing MDP..."
+    print time.strftime("%H:%M:%S"), "- Constructing {}...".format(method)
 
     # T gives the transition probability for every s, a, s' triple.
     # R gives the reward associated with every s, a, s' triple.
@@ -441,18 +486,18 @@ def solve_mdp(horizon, epsilon, discount=0.9, method='VIours',
                    for next_state in range(len(S))] for action in A])
         R.append([[getReward(coord, action, decodeState(next_state))
                    for next_state in range(len(S))] for action in A])
+    tr = 0
     if solution_a==[] or solution_v==[]:
         if method=='VIours':
-            conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+            _, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
         elif method=='VItheirs':
             solution_a, solution_v = VI.valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
-            conv = True
         elif method=='PIours':
             solution_a, solution_v = policyIteration(len(S), len(A), discount, horizon, epsilon, T, R)
-            conv = True
-    else:
-        conv = True
-
+        elif method=='Qours':
+            solution_a, solution_v, tr = qLearning(len(S), len(A), discount, horizon, epsilon, T, R)
+        elif method=='Sarsaours':
+            solution_a, solution_v, tr = sarsa(len(S), len(A), discount, horizon, epsilon, T, R)
     s = 0
 
     totalReward = []
@@ -483,72 +528,12 @@ def solve_mdp(horizon, epsilon, discount=0.9, method='VIours',
         plt.xlabel("Iteration")
         plt.ylabel("Cummulative Reward")
         plt.show()
-    return (conv, solution_v, solution_a, totalReward)
+    return (solution_v, solution_a, totalReward, tr)
 
-def solve_ql(horizon, epsilon, discount=0.9, solution_v=[], solution_a=[],
-             printit=False, plotit=False):
-    """
-    Q-Learning and solve it. Print the
-    best found policy for sample states.
-
-    Returns
-    -------
-    solution: tuple
-        First element is the value function. The second
-        element is the Q-value function, from which a policy can be derived.
-    """
-    print time.strftime("%H:%M:%S"), "- Constructing QL..."
-
-    # T gives the transition probability for every s, a, s' triple.
-    # R gives the reward associated with every s, a, s' triple.
-    T = []
-    R = []
-    for state in range(len(S)):
-        coord = decodeState(state)
-        T.append([[getTransitionProbability(coord, action,
-                                            decodeState(next_state))
-                   for next_state in range(len(S))] for action in A])
-        R.append([[getReward(coord, action, decodeState(next_state))
-                   for next_state in range(len(S))] for action in A])
-
-    if solution_a==[] or solution_v==[]:
-        solution_a, solution_v = qLearning(len(S), len(A), discount, horizon, epsilon, T, R)
-
-    s = 0
-
-    totalReward = []
-    for t in xrange(horizon):
-        if printit:
-            printState(decodeState(s))
-
-        if isTerminal(decodeState(s)):
-            break
-
-        s1, r = sampleSR(s, solution_a[s], T)
-        if len(totalReward) > 0:
-            totalReward += [totalReward[-1] + r]
-        else:
-            totalReward += [r]
-        s = s1
-
-        if printit:
-            goup(SQUARE_SIZE)
-
-        state = encodeState(coord)
-
-        # Sleep 1 second so the user can see what is happening.
-        if printit:
-            time.sleep(0.1)
-    if plotit:
-        plt.plot(totalReward)
-        plt.xlabel("Iteration")
-        plt.ylabel("Cummulative Reward")
-        plt.show()
-    return (solution_v, solution_a, totalReward)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-ho', '--horizon', default=100000, type=int,
+    parser.add_argument('-ho', '--horizon', default=10000, type=int,
                         help="Horizon parameter for value iteration")
     parser.add_argument('-e', '--epsilon', default=0.0001, type=float,
                         help="Epsilon parameter for value iteration")
@@ -556,48 +541,79 @@ if __name__ == "__main__":
                         help="Discount parameter for value iteration")
 
     args = parser.parse_args()
-    numexps = 20
-    r0, r1, r2, r3 = [0]*numexps, [0]*numexps, [0]*numexps, [0]*numexps
-    _, solv1, sola1, _ = solve_mdp(args.horizon, args.epsilon)
-    _, solv2, sola2, _ = solve_mdp(args.horizon, args.epsilon, 0.9, 'VItheirs')
-    _, solv3, sola3, _ = solve_mdp(args.horizon, args.epsilon, 0.9, 'PIours')
+    numexps = 16
+    r0, r1, r2, r3, r4 = [0]*numexps, [0]*numexps, [0]*numexps, [0]*numexps, [0]*numexps
+    qr, sr = [0]*numexps, [0]*numexps
+    solv1, sola1, _, _ = solve(args.horizon, args.epsilon)
+    solv2, sola2, _, _ = solve(args.horizon, args.epsilon, 0.9, 'VItheirs')
+    solv3, sola3, _, _ = solve(args.horizon, args.epsilon, 0.9, 'PIours')
     tmpargs = [args.horizon, args.epsilon, 0.9, 'VIours', solv1, sola1]
-    out0 = Parallel(n_jobs=-1)(delayed(solve_mdp) (*tmpargs) for k in range(numexps))
-    out1 = Parallel(n_jobs=-1)(delayed(solve_ql) (args.horizon, args.epsilon) for k in range(numexps))
+    out0 = Parallel(n_jobs=-1)(delayed(solve) (*tmpargs) for k in range(numexps))
+    tmpargs = [args.horizon, args.epsilon, 0.9, 'Qours']
+    out1 = Parallel(n_jobs=-1)(delayed(solve) (*tmpargs) for k in range(numexps))
     tmpargs = [args.horizon, args.epsilon, 0.9, 'VItheirs', solv2, sola2]
-    out2 = Parallel(n_jobs=-1)(delayed(solve_mdp) (*tmpargs) for k in range(numexps))
+    out2 = Parallel(n_jobs=-1)(delayed(solve) (*tmpargs) for k in range(numexps))
     tmpargs = [args.horizon, args.epsilon, 0.9, 'PIours', solv3, sola3]
-    out3 = Parallel(n_jobs=-1)(delayed(solve_mdp) (*tmpargs) for k in range(numexps))
+    out3 = Parallel(n_jobs=-1)(delayed(solve) (*tmpargs) for k in range(numexps))
+    tmpargs = [args.horizon, args.epsilon, 0.9, 'Sarsaours']
+    out4 = Parallel(n_jobs=-1)(delayed(solve) (*tmpargs) for k in range(numexps))
     for i in range(numexps):
-        _, v0, _, tr0 = out0[i]
-        v1, _, tr1 = out1[i]
-        _, v2, _, tr2 = out2[i]
-        _, v3, _, tr3 = out3[i]
+        v0, _, tr0, _ = out0[i]
+        v1, _, tr1, qr[i] = out1[i]
+        v2, _, tr2, _ = out2[i]
+        v3, _, tr3, _ = out3[i]
+        v4, _, tr4, sr[i] = out4[i]
         r0[i] = tr0[-1]
         r1[i] = tr1[-1]
         r2[i] = tr2[-1]
         r3[i] = tr3[-1]
+        r4[i] = tr4[-1]
     print r0, np.mean(r0)
     print r1, np.mean(r1)
     print r2, np.mean(r2)
     print r3, np.mean(r3)
-    plt.plot(r0)
+    print r4, np.mean(r4)
+    qrm, qrstd = np.mean(qr,axis=0), np.std(qr,axis=0)
+    srm, srstd = np.mean(sr,axis=0), np.std(sr,axis=0)
+    plt.plot(r0,label='Viours')
     plt.hold
-    plt.plot(r1)
+    plt.plot(r1,label='Qours')
     plt.hold
-    plt.plot(r2)
+    plt.plot(r2,label='Vitheirs')
     plt.hold
-    plt.plot(r3)
+    plt.plot(r3,label='PIours')
+    plt.hold
+    plt.plot(r4,label='Sarsaours')
+    plt.legend()
+    plt.show(block=False)
+    plt.figure()
+    plt.plot(range(len(qrm)), qrm, 'r',label='Qours')
+    plt.fill_between(range(len(qrm)), qrm-qrstd, qrm+qrstd, facecolor='r', alpha=0.5)
+    plt.hold
+    plt.plot(range(len(srm)), srm, 'b',label='Sarsaours')
+    plt.fill_between(range(len(srm)), srm-srstd, srm+srstd, facecolor='b', alpha=0.5)
+    plt.legend()
+    plt.title('Learning Curves')
+    plt.xlabel('Episode')
+    plt.ylabel('Cummulative reward')
     plt.show(block=False)
     plt.matshow(np.reshape(v0, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
+    plt.title('VIours')
     plt.show(block=False)
     plt.matshow(np.reshape(v1, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
+    plt.title('Qours')
     plt.show(block=False)
     plt.matshow(np.reshape(v2, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
+    plt.title('Vitheirs')
     plt.show(block=False)
     plt.matshow(np.reshape(v3, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
+    plt.title('PIours')
+    plt.show(block=False)
+    plt.matshow(np.reshape(v4, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
+    plt.gca().invert_yaxis()
+    plt.title('Sarsaours')
     plt.show()
