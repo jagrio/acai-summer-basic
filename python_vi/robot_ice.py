@@ -11,6 +11,7 @@ matplotlib.use('qt5agg')
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 from matplotlib import cm
+from copy import deepcopy
 import VI
 
 # 0: Normal ice
@@ -329,6 +330,44 @@ def valueIteration(ns, na, discount, horizon, epsilon, T, R):
     else:
         return False, A1, V
 
+def policyIteration(ns, na, discount, horizon, epsilon, T, R):
+    """
+    Perform the Policy Iteration solver. Expects as input the number of states
+    and actions, the discount (gamma), the horizon, the minimum tolerated error,
+    the transition probabilities among states and the corresponding rewards.
+
+    Returns
+    -------
+    solution: triple
+        First element is the best policy. The second
+        element are the values.
+    """
+    # V, A1 = np.random.randint(0,100,(ns)).tolist(), np.random.randint(0,na,(ns),'int').tolist()
+    Q, V, A1 = [[0]*na]*ns , [0]*ns, np.random.randint(0,na-1,(ns)).tolist()
+    delta, policy_stable = 10, False
+    while not policy_stable:
+        # policy evaluation
+        delta = 10
+        while delta > epsilon:
+            delta = 0
+            for s in range(ns):
+                v = V[s]
+                a1 = A1[s]
+                V[s] = sum([T[s][a1][sn]*(R[s][a1][sn]+discount*V[sn])
+                            for sn in range(ns)])
+                delta = max(delta, abs(v - V[s]))
+        # policy improvement
+        policy_stable = True
+        for s in range(ns):
+            tmpA1 = A1[s]
+            Q[s] = [[T[s][a][sn]*(R[s][a][sn]+discount*V[sn])
+                     for sn in range(ns)] for a in range(na)]
+            Q[s] = [sum(qi) for qi in Q[s]]
+            A1[s] = np.argmax(Q[s])
+            if not tmpA1 == A1[s]:
+                policy_stable = False
+    return A1, V
+
 def qLearning(ns, na, discount, horizon, epsilon, T, R):
     """
     Perform the Q-Learning solver. Expects as input the number of states
@@ -341,9 +380,9 @@ def qLearning(ns, na, discount, horizon, epsilon, T, R):
         First element is the best policy.
         Second element are the values.
     """
-    horizon = 100000
+    horizon = 10000
     Q, V, A1 = np.random.rand(ns,na), [0]*ns, [0]*ns
-    iters, lr, epsilon, beta = 0, .1, 0.5, 0
+    iters, lr, epsilon, beta, discount = 0, .2, 1-1e-4, 0, .97
     while iters < horizon :
         s = np.random.randint(0,ns)
         tmpdropprob = 1
@@ -363,18 +402,21 @@ def qLearning(ns, na, discount, horizon, epsilon, T, R):
             tmpdropprob = sampleProbability([0.001, 1-0.001])
             if tmpdropprob==0:
                 iters -=1
-                epsilon /= 0.99
+                epsilon /= 0.9
+                # epsilon = iters**.5
             # raw_input()
         iters += 1
-        beta += 0.01
-        epsilon *= 0.99
+        # beta += 0.01
+        epsilon *= 0.9
+        # epsilon = 1/iters**.5
     for s in range(ns):
         V[s] = max(Q[s])
         A1[s] = np.argmax(Q[s])
     return A1, V
 
 
-def solve_mdp(horizon, epsilon, discount=0.9, method='ours'):
+def solve_mdp(horizon, epsilon, discount=0.9, method='VIours',
+              solution_v=[], solution_a=[], printit=False, plotit=False):
     """
     Construct the gridworld MDP, and solve it using value iteration. Print the
     best found policy for sample states.
@@ -399,21 +441,24 @@ def solve_mdp(horizon, epsilon, discount=0.9, method='ours'):
                    for next_state in range(len(S))] for action in A])
         R.append([[getReward(coord, action, decodeState(next_state))
                    for next_state in range(len(S))] for action in A])
-    if method=='ours':
-        conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
-    elif method=='theirs':
-        solution_a, solution_v = VI.valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
-        conv = True
-    if conv:
-        print "CONVERGED"
+    if solution_a==[] or solution_v==[]:
+        if method=='VIours':
+            conv, solution_a, solution_v = valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+        elif method=='VItheirs':
+            solution_a, solution_v = VI.valueIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+            conv = True
+        elif method=='PIours':
+            solution_a, solution_v = policyIteration(len(S), len(A), discount, horizon, epsilon, T, R)
+            conv = True
     else:
-        print "MAX ITERS"
+        conv = True
 
     s = 0
 
     totalReward = []
     for t in xrange(horizon):
-        # printState(decodeState(s))
+        if printit:
+            printState(decodeState(s))
 
         if isTerminal(decodeState(s)):
             break
@@ -425,19 +470,23 @@ def solve_mdp(horizon, epsilon, discount=0.9, method='ours'):
             totalReward += [r]
         s = s1
 
-        # goup(SQUARE_SIZE)
+        if printit:
+            goup(SQUARE_SIZE)
 
         state = encodeState(coord)
 
         # Sleep 1 second so the user can see what is happening.
-        # time.sleep(0.1)
-    # plt.plot(totalReward)
-    # plt.xlabel("Iteration")
-    # plt.ylabel("Cummulative Reward")
-    # plt.show()
-    return (conv, solution_v, totalReward)
+        if printit:
+            time.sleep(1)
+    if plotit:
+        plt.plot(totalReward)
+        plt.xlabel("Iteration")
+        plt.ylabel("Cummulative Reward")
+        plt.show()
+    return (conv, solution_v, solution_a, totalReward)
 
-def solve_ql(horizon, epsilon, discount=0.9):
+def solve_ql(horizon, epsilon, discount=0.9, solution_v=[], solution_a=[],
+             printit=False, plotit=False):
     """
     Q-Learning and solve it. Print the
     best found policy for sample states.
@@ -462,13 +511,15 @@ def solve_ql(horizon, epsilon, discount=0.9):
         R.append([[getReward(coord, action, decodeState(next_state))
                    for next_state in range(len(S))] for action in A])
 
-    solution_a, solution_v = qLearning(len(S), len(A), discount, horizon, epsilon, T, R)
+    if solution_a==[] or solution_v==[]:
+        solution_a, solution_v = qLearning(len(S), len(A), discount, horizon, epsilon, T, R)
 
     s = 0
 
     totalReward = []
     for t in xrange(horizon):
-        # printState(decodeState(s))
+        if printit:
+            printState(decodeState(s))
 
         if isTerminal(decodeState(s)):
             break
@@ -480,53 +531,63 @@ def solve_ql(horizon, epsilon, discount=0.9):
             totalReward += [r]
         s = s1
 
-        # goup(SQUARE_SIZE)
+        if printit:
+            goup(SQUARE_SIZE)
 
         state = encodeState(coord)
 
         # Sleep 1 second so the user can see what is happening.
-        # time.sleep(0.1)
-    # plt.plot(totalReward)
-    # plt.xlabel("Iteration")
-    # plt.ylabel("Cummulative Reward")
-    # plt.show()
-    return (solution_v, totalReward)
+        if printit:
+            time.sleep(0.1)
+    if plotit:
+        plt.plot(totalReward)
+        plt.xlabel("Iteration")
+        plt.ylabel("Cummulative Reward")
+        plt.show()
+    return (solution_v, solution_a, totalReward)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-ho', '--horizon', default=10000, type=int,
+    parser.add_argument('-ho', '--horizon', default=100000, type=int,
                         help="Horizon parameter for value iteration")
-    parser.add_argument('-e', '--epsilon', default=0.001, type=float,
+    parser.add_argument('-e', '--epsilon', default=0.0001, type=float,
                         help="Epsilon parameter for value iteration")
-    parser.add_argument('-d', '--discount', default=0.97, type=float,
+    parser.add_argument('-d', '--discount', default=0.9, type=float,
                         help="Discount parameter for value iteration")
 
     args = parser.parse_args()
-    numexps = 100
-    r0 = [0]*numexps
-    r1 = [0]*numexps
-    r2 = [0]*numexps
-    out0 = Parallel(n_jobs=-1)(delayed(solve_mdp) (args.horizon, args.epsilon) for k in range(numexps))
+    numexps = 20
+    r0, r1, r2, r3 = [0]*numexps, [0]*numexps, [0]*numexps, [0]*numexps
+    _, solv1, sola1, _ = solve_mdp(args.horizon, args.epsilon)
+    _, solv2, sola2, _ = solve_mdp(args.horizon, args.epsilon, 0.9, 'VItheirs')
+    _, solv3, sola3, _ = solve_mdp(args.horizon, args.epsilon, 0.9, 'PIours')
+    tmpargs = [args.horizon, args.epsilon, 0.9, 'VIours', solv1, sola1]
+    out0 = Parallel(n_jobs=-1)(delayed(solve_mdp) (*tmpargs) for k in range(numexps))
     out1 = Parallel(n_jobs=-1)(delayed(solve_ql) (args.horizon, args.epsilon) for k in range(numexps))
-    tmpargs = [args.horizon, args.epsilon, 0.9, 'theirs']
+    tmpargs = [args.horizon, args.epsilon, 0.9, 'VItheirs', solv2, sola2]
     out2 = Parallel(n_jobs=-1)(delayed(solve_mdp) (*tmpargs) for k in range(numexps))
+    tmpargs = [args.horizon, args.epsilon, 0.9, 'PIours', solv3, sola3]
+    out3 = Parallel(n_jobs=-1)(delayed(solve_mdp) (*tmpargs) for k in range(numexps))
     for i in range(numexps):
-        _, v0, tr0 = out0[i]
-        v1, tr1 = out1[i]
-        _, v2, tr2 = out2[i]
-        # _, v0, tr0 = solve_mdp(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
-        # v1, tr1 = solve_ql(horizon=args.horizon, epsilon=args.epsilon, discount=args.discount)
+        _, v0, _, tr0 = out0[i]
+        v1, _, tr1 = out1[i]
+        _, v2, _, tr2 = out2[i]
+        _, v3, _, tr3 = out3[i]
         r0[i] = tr0[-1]
         r1[i] = tr1[-1]
         r2[i] = tr2[-1]
+        r3[i] = tr3[-1]
     print r0, np.mean(r0)
     print r1, np.mean(r1)
     print r2, np.mean(r2)
+    print r3, np.mean(r3)
     plt.plot(r0)
     plt.hold
     plt.plot(r1)
     plt.hold
     plt.plot(r2)
+    plt.hold
+    plt.plot(r3)
     plt.show(block=False)
     plt.matshow(np.reshape(v0, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
@@ -535,5 +596,8 @@ if __name__ == "__main__":
     plt.gca().invert_yaxis()
     plt.show(block=False)
     plt.matshow(np.reshape(v2, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
+    plt.gca().invert_yaxis()
+    plt.show(block=False)
+    plt.matshow(np.reshape(v3, (SQUARE_SIZE, SQUARE_SIZE)),cmap=cm.gray)
     plt.gca().invert_yaxis()
     plt.show()
