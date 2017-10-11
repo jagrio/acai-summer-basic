@@ -1,12 +1,11 @@
-#! /usr/bin/env python
 import random
 import gym
 
-EPISODES = 100000
+EPISODES = 10000
 EPSILON = 0.1
 GAMMA = 0.9
 LEARNING_RATE = 0.1
-DISCRETE_STEPS = 20     # 10 discretization steps per state variable
+DISCRETE_STEPS = 10     # 10 discretization
 
 def argmax(l):
     """ Return the index of the maximum element of a list
@@ -35,35 +34,27 @@ def make_state(observation):
 
     return state
 
-def main():
-    average_cumulative_reward = 0.0
-
-    # Create the Gym environment (CartPole)
-    env = gym.make('CartPole-v1')
-
-    print('Action space is:', env.action_space)
-    print('Observation space is:', env.observation_space)
-
-    # Q-table for the discretized states, and two actions
-    num_states = DISCRETE_STEPS ** 4
-    qtable = [[0., 0.] for state in range(num_states)]
-
-    # Loop over episodes
+def qlearning(env, qtable, numstates):
+    eps = EPSILON
+    cumlist = [0]
     for i in range(EPISODES):
         state = env.reset()
-        state = make_state(state)
+        state = make_state(state) #discritizing state
 
         terminate = False
         cumulative_reward = 0.0
 
         # Loop over time-steps
         while not terminate:
+            if i > (EPISODES - 20):
+        	    env.render()
+        	    eps = 0
             # Compute what the greedy action for the current state is
             qvalues = qtable[state]
             greedy_action = argmax(qvalues)
 
             # Sometimes, the agent takes a random action, to explore the environment
-            if random.random() < EPSILON:
+            if random.random() < eps:
                 action = random.randrange(2)
             else:
                 action = greedy_action
@@ -79,9 +70,11 @@ def main():
             # Update statistics
             cumulative_reward += reward
             state = next_state
+        cumlist.append(0.999*cumlist[-1]+0.001*cumulative_reward)
+        print("%03.2f %%" % (100.0*i/EPISODES), end='\r')
+		        # Per-episode statistics
+        # print(i, cumulative_reward, sep=',')
+    env.close()
 
-        # Per-episode statistics
-        print("%03.2f%%, %010d" % (i/EPISODES*100., cumulative_reward), end='\r')
 
-if __name__ == '__main__':
-    main()
+    return cumlist, qtable
