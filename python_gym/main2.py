@@ -16,9 +16,18 @@ def main():
     qtable = [[0., 0.] for state in range(num_states)]
 
     # Choose method
-    C, A = qlearning(env, qtable, num_states)
+    # C, A = qlearning(env, qtable, num_states)
+    # plt.plot(C)
+    # plt.show()
+
+    # C, thetas = fapprox(env)
+    C = fapprox_mlp(env)
+
     plt.plot(C)
     plt.show()
+    # plt.plot(thetas)
+    # plt.show()
+
 
 if __name__ == '__main__':
     main()
