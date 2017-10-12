@@ -6,7 +6,7 @@ import time
 import keras
 from keras.models import Sequential
 from keras.layers import Dense, Activation
-from keras.optimizers import SGD
+from keras.optimizers import SGD, Adam
 import sys
 
 EPISODES = 25000
@@ -153,19 +153,19 @@ def fapprox(env):
 
 def fapprox_mlp(env):
     cumlist = [0]
-    gamma = 0.95
-    eps = EPSILON
+    gamma = 0.8
+    eps = 0.1
     #initializations
     fisa = np.zeros((8, 2))
     theta = np.random.randn(8, 1)
     thetas = []
     # MLP construction
     model = Sequential()
-    model.add(Dense(8, activation='relu', input_shape=(8,)))
-    # model.add(Dense(128, activation='relu'))
+    model.add(Dense(16, activation='relu', input_shape=(8,)))
+    model.add(Dense(8, activation='relu'))
     # model.add(Dense(64, activation='relu'))
     model.add(Dense(1, activation='linear'))
-    model.compile(loss='mse', optimizer='adam')
+    model.compile(loss='mse', optimizer=Adam(lr=0.0008))
     #start
     for i in range(EPISODES):
         state = env.reset()
