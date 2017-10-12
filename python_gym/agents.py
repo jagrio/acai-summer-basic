@@ -9,9 +9,9 @@ from keras.layers import Dense, Activation
 from keras.optimizers import SGD, Adam
 import sys
 
-EPISODES = 25000
-EPSILON = 0.2
-GAMMA = 0.8
+EPISODES = 40000
+EPSILON = 0.05
+GAMMA = 0.99
 LEARNING_RATE = 0.0001
 DISCRETE_STEPS = 20     # 10 discretization
 
@@ -141,7 +141,7 @@ def fapprox(env):
 
             state = next_state
         cumlist.append(0.999*cumlist[-1] + 0.001*cumulative_reward)
-        print("%03.2f, %03.2f %%" % (cumlist[-1], 100.0*i/EPISODES), end='\r')
+        print("%03.2f, %02.2f, %03.2f %%" % (cumlist[-1], eps, 100.0*i/EPISODES), end='\r')
         thetas.append(theta.tolist()[0])
         # if len(thetas) > 20 and thetas[-1][0]-thetas[-20][0] < -100:
             # env.render()
@@ -153,8 +153,9 @@ def fapprox(env):
 
 def fapprox_mlp(env):
     cumlist = [0]
-    gamma = 0.8
-    eps = 0.1
+    gamma = GAMMA
+    eps = EPSILON
+    thres = 1e-3
     #initializations
     fisa = np.zeros((8, 2))
     theta = np.random.randn(8, 1)
@@ -167,7 +168,8 @@ def fapprox_mlp(env):
     model.add(Dense(1, activation='linear'))
     model.compile(loss='mse', optimizer=Adam(lr=0.0008))
     #start
-    for i in range(EPISODES):
+    i = 0
+    while i < EPISODES:
         state = env.reset()
         # make fi table from state vector
         fisa[0:4, 0] = np.array(state)
@@ -184,6 +186,19 @@ def fapprox_mlp(env):
         	    env.render()
         	    eps = 0.0
 
+            tmpdiff = np.mean(np.diff(cumlist)[-10:])
+            if len(cumlist) > 10 and abs(tmpdiff) < thres:
+                # reward no more changing so explore
+                eps = 0.3
+            elif tmpdiff > thres*5:
+                # reward fast increasing no explore
+                eps = 0
+            elif tmpdiff < -thres*5:
+                # reward fast decreasing early stop
+                eps = EPSILON
+                i -= 1
+                break
+
             #find action to take
             logits = model.predict(fisa.T)
             action = logits.argmax()
@@ -193,6 +208,8 @@ def fapprox_mlp(env):
 
             #take the step
             next_state, reward, terminate, info = env.step(action)
+            # if terminate:
+            #     reward = -0.1
             cumulative_reward+=reward
 
             #compute Q+(s,a)
@@ -209,6 +226,7 @@ def fapprox_mlp(env):
             model.fit(inp.T, target, epochs=1, verbose=0)
 
             state = next_state
+            i += 1
         cumlist.append(0.999*cumlist[-1] + 0.001*cumulative_reward)
-        print("%03.2f, %03.2f %%" % (cumlist[-1], 100.0*i/EPISODES), end='\r')
+        print("%03.2f, %02.2f, %03.2f %%" % (cumlist[-1], eps, 100.0*i/EPISODES), end='\r')
     return cumlist
